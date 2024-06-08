@@ -59,11 +59,25 @@ function M.operations(opts)
         backward = {opts.backward, 'string'},
         forward = {opts.forward, 'string'},
     }
-    return setmetatable({
+    local operations = setmetatable({
         _opts = opts,
+
+        _repeat_backward_callback = function()
+            vim.notify("No backward callback set", vim.log.levels.WARN)
+        end,
+        _repeat_forward_callback = function()
+            vim.notify("No forward callback set", vim.log.levels.WARN)
+        end,
     }, {
         __index = require'impairative.operations',
     })
+    operations.repeat_backward_callback = function()
+        operations._repeat_backward_callback()
+    end
+    operations.repeat_forward_callback = function()
+        operations._repeat_forward_callback()
+    end
+    return operations
 end
 
 return M

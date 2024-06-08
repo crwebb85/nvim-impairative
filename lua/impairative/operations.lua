@@ -5,6 +5,10 @@ local ImpairativeOperationsOptions
 
 ---@class ImpairativeOperations
 ---@field _opts ImpairativeOperationsOptions
+---@field _repeat_backward_callback fun()
+---@field _repeat_forward_callback fun()
+---@field repeat_backward_callback fun()
+---@field repeat_forward_callback fun()
 local ImpairativeOperations = {}
 
 ---Used to generate descriptions for the keymaps.
@@ -71,8 +75,16 @@ function ImpairativeOperations:function_pair(args)
         backward = {args.backward, 'callable'},
         forward = {args.forward, 'callable'},
     }
-    vim.keymap.set('n', self._opts.backward .. args.key, args.backward, {desc = process_desc(args.desc, 1)})
-    vim.keymap.set('n', self._opts.forward .. args.key, args.forward, {desc = process_desc(args.desc, 2)})
+    vim.keymap.set('n', self._opts.backward .. args.key, function()
+        self._repeat_backward_callback = args.backward
+        self._repeat_forward_callback = args.forward
+        args.backward()
+    end, { desc = process_desc(args.desc, 1) })
+    vim.keymap.set('n', self._opts.forward .. args.key, function()
+        self._repeat_backward_callback = args.backward
+        self._repeat_forward_callback = args.forward
+        args.forward()
+    end, { desc = process_desc(args.desc, 2) })
     return self
 end
 
@@ -95,9 +107,21 @@ function ImpairativeOperations:unified_function(args)
         key = args.key,
         desc = args.desc,
         backward = function()
+            self._repeat_backward_callback = function()
+                args.fun('backward')
+            end
+            self._repeat_forward_callback = function()
+                args.fun('forward')
+            end
             return args.fun('backward')
         end,
         forward = function()
+            self._repeat_backward_callback = function()
+                args.fun('backward')
+            end
+            self._repeat_forward_callback = function()
+                args.fun('forward')
+            end
             return args.fun('forward')
         end,
     }
@@ -126,7 +150,8 @@ function ImpairativeOperations:jump_in_buf(args)
         fun = {args.fun, 'callable'},
         extreme = {args.extreme, 'table', true},
     }
-    vim.keymap.set({'n', 'x', 'o'}, self._opts.backward .. args.key, function()
+
+    local function jump_in_buf_backward()
         local curosr = vim.api.nvim_win_get_cursor(0)
 
         -- Note: prevs is zero-based because otherwise modulo math becomes too weird.
@@ -148,8 +173,9 @@ function ImpairativeOperations:jump_in_buf(args)
         else
             vim.api.nvim_win_set_cursor(0, {prevs[prevs.i].end_line, prevs[prevs.i].end_col - 1})
         end
-    end, {desc = process_desc(args.desc, 1)})
-    vim.keymap.set({'n', 'x', 'o'}, self._opts.forward .. args.key, function()
+    end
+
+    local function jump_in_buf_forward()
         local curosr = vim.api.nvim_win_get_cursor(0)
 
         local pos = args.fun()
@@ -166,24 +192,47 @@ function ImpairativeOperations:jump_in_buf(args)
         if pos then
             vim.api.nvim_win_set_cursor(0, {pos.start_line, pos.start_col})
         end
-    end, {desc = process_desc(args.desc, 2)})
+    end
 
+    vim.keymap.set({ 'n', 'x', 'o' }, self._opts.backward .. args.key, function()
+        self._repeat_backward_callback = jump_in_buf_backward
+        self._repeat_forward_callback = jump_in_buf_forward
+        jump_in_buf_backward()
+    end, { desc = process_desc(args.desc, 1) })
+
+    vim.keymap.set({ 'n', 'x', 'o' }, self._opts.forward .. args.key, function()
+        self._repeat_backward_callback = jump_in_buf_backward
+        self._repeat_forward_callback = jump_in_buf_forward
+        jump_in_buf_forward()
+    end, { desc = process_desc(args.desc, 2) })
+
+    local function jump_in_buf_backward_extreme()
+        local pos = args.fun():next()
+        if pos then
+            vim.api.nvim_win_set_cursor(0, { pos.start_line, pos.start_col })
+        end
+    end
+
+    local function jump_in_buf_forward_extreme()
+        local pos = args.fun():last()
+        if pos then
+            vim.api.nvim_win_set_cursor(0, { pos.start_line, pos.start_col })
+        end
+    end
     if args.extreme then
         vim.validate {
             ['extreme.key'] = {args.extreme.key, 'string'},
             ['extreme.desc'] = {args.extreme.desc, validate_desc, 'ImpairativeDesc'},
         }
         vim.keymap.set({'n', 'x', 'o'}, self._opts.backward .. args.extreme.key, function()
-            local pos = args.fun():next()
-            if pos then
-                vim.api.nvim_win_set_cursor(0, {pos.start_line, pos.start_col})
-            end
+            self._repeat_backward_callback = jump_in_buf_backward_extreme
+            self._repeat_forward_callback = jump_in_buf_forward_extreme
+            jump_in_buf_backward_extreme()
         end, {desc = process_desc(args.extreme.desc, 1)})
         vim.keymap.set({'n', 'x', 'o'}, self._opts.forward .. args.extreme.key, function()
-            local pos = args.fun():last()
-            if pos then
-                vim.api.nvim_win_set_cursor(0, {pos.start_line, pos.start_col})
-            end
+            self._repeat_backward_callback = jump_in_buf_backward_extreme
+            self._repeat_forward_callback = jump_in_buf_forward_extreme
+            jump_in_buf_forward_extreme()
         end, {desc = process_desc(args.extreme.desc, 1)})
     end
 
