@@ -243,6 +243,7 @@ end
 ---@field key string The key for the mapping (will be prefixed by one of the leaders)
 ---@field backward string The "backward" command
 ---@field forward string The "forward" command
+---@field desc? ImpairativeDesc see |ImpairativeDesc|
 local ImpairativeOperationsCommandPairArgs
 
 ---Bind operation mappings by directly specifying the |cmdline| commands for each direction.
@@ -258,13 +259,19 @@ function ImpairativeOperations:command_pair(args)
         key = {args.key, 'string'},
         backward = {args.backward, 'string'},
         forward = {args.forward, 'string'},
+		desc = { args.desc, validate_desc, "ImpairativeDesc" },
     }
+	---@type ImpairativeDesc
+	local desc = args.desc
+	if args.desc == nil then
+		desc = {
+			backward = ('Run the "%s" command'):format(args.backward),
+			forward = ('Run the "%s" command'):format(args.forward),
+		}
+	end
     return self:unified_function {
         key = args.key,
-        desc = {
-            backward = ('Run the "%s" command'):format(args.backward),
-            forward = ('Run the "%s" command'):format(args.forward),
-        },
+        desc = desc,
         fun = function(direction)
             local cmd = args[direction]
             if 0 < vim.v.count then
